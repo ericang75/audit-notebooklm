@@ -55,8 +55,7 @@ if "active_project" not in st.session_state:
     st.session_state.active_project = None
 if "dfs" not in st.session_state:
     st.session_state.dfs = {}
-if "openai_client" not in st.session_state:
-    st.session_state.openai_client = None
+
 if "show_log" not in st.session_state:
     st.session_state.show_log = False
 if "show_details" not in st.session_state:
@@ -316,10 +315,10 @@ def perform_join_analysis(df1: pd.DataFrame, df2: pd.DataFrame, key1: str, key2:
 # ---------------- OpenAI client ----------------
 @st.cache_resource
 def get_openai_client():
-    api_key = os.environ.get("OPENAI_API_KEY", None)
+    api_key = st.secrets["OPENAI_API_KEY"]
     if not api_key:
         try:
-            api_key = st.secrets["OPENAI_API_KEY"]
+            api_key = os.environ.get("OPENAI_API_KEY", None)
         except Exception:
             api_key = None
     if not api_key:
@@ -332,6 +331,15 @@ def get_openai_client():
     except Exception:
         return None
 
+
+if st.session_state.openai_client is None:
+    st.session_state.openai_client = get_openai_client()
+
+if st.session_state.openai_client is None:
+    st.warning("⚠️ OpenAI API Key not loaded. Please check your Streamlit Secrets.")
+else:
+    st.success("✅ OpenAI client initialized.")
+    
 # ---------------- File readers ----------------
 def read_csv_bytes(b: bytes) -> pd.DataFrame:
     try:
