@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+pdfplumber
+openai
+reportlab
+xlsxwriter
+openpyxl
+pytesseract
+Pillow
+pdf2image
