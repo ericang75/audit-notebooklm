@@ -19,7 +19,6 @@ import numpy as np
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 import base64
-from docling.document_converter import DocumentConverter
 
 try:
     import pdfplumber
