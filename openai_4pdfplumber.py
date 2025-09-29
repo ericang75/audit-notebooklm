@@ -668,7 +668,7 @@ def main_ui():
     st.markdown("---")
     st.subheader("📂 File Management")
     docs = list_documents(proj)
-    
+
     if docs:
         # Create DataFrame for display
         file_data = []
@@ -683,36 +683,35 @@ def main_ui():
         
         df_files = pd.DataFrame(file_data)
         
-        # Display with selection
+        # Display with multi-selection
         selected_rows = st.dataframe(
             df_files,
             use_container_width=True,
             hide_index=True,
-            selection_mode="single-row",
+            selection_mode="multi-row",  # 🔹 ubah ke multi
             on_select="rerun"
         )
         
-        # Remove file button
         if selected_rows and selected_rows.selection.rows:
-            selected_idx = selected_rows.selection.rows[0]
-            selected_doc = docs[selected_idx][0]
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.info(f"Selected: {selected_doc}")
-            with col2:
-                if st.button("🗑️ Remove File", type="secondary"):
+            selected_idx_list = selected_rows.selection.rows
+            selected_docs = [docs[i][0] for i in selected_idx_list]
+            st.info(f"Selected: {', '.join(selected_docs)}")
+            
+            if st.button("🗑️ Remove Selected Files", type="secondary"):
+                for i in selected_idx_list:
+                    selected_doc = docs[i][0]
                     remove_document(proj, selected_doc)
-                    # Also try to remove physical file
                     try:
-                        file_path = os.path.join(project_path(proj), docs[selected_idx][2])
+                        file_path = os.path.join(project_path(proj), docs[i][2])
                         if os.path.exists(file_path):
                             os.remove(file_path)
                     except:
                         pass
-                    st.success(f"Removed {selected_doc}")
-                    st.rerun()
+                st.success(f"Removed {len(selected_idx_list)} file(s)")
+                st.rerun()
     else:
         st.info("No files uploaded yet. Use the upload section above.")
+
 
     # Table selection for analysis
     st.markdown("---")
@@ -752,76 +751,48 @@ def main_ui():
                 st.dataframe(df.head(20), use_container_width=True)
 
     # Analysis buttons
-    st.markdown("---")
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col1:
-        run_analysis = st.button("🚀 Run Analysis", type="primary", use_container_width=True)
+    # Single Analyze button
+    run_analysis = st.button("🚀 Analyze", type="primary", use_container_width=True)
+
     
     # Join Analysis UI (if 2 tables selected)
-    if len(chosen) == 2:
-        st.markdown("### 🔗 Join Analysis")
-        df1, df2 = tables[chosen[0]], tables[chosen[1]]
-        
-        # Auto-detect keys
-        potential_keys = detect_join_keys(df1, df2)
-        
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if potential_keys:
-                st.success(f"Found {len(potential_keys)} potential join keys")
-                auto_key1, auto_key2 = potential_keys[0] if potential_keys else (None, None)
-            else:
-                st.info("No automatic keys detected. Please select manually.")
-                auto_key1, auto_key2 = None, None
-            
-            key1 = st.selectbox(
-                f"Join key from {chosen[0]}",
-                df1.columns,
-                index=list(df1.columns).index(auto_key1) if auto_key1 and auto_key1 in df1.columns else 0
-            )
-        
-        with col_b:
-            key2 = st.selectbox(
-                f"Join key from {chosen[1]}",
-                df2.columns,
-                index=list(df2.columns).index(auto_key2) if auto_key2 and auto_key2 in df2.columns else 0
-            )
-        
-        if st.button("🔍 Analyze Join", use_container_width=True):
+    if run_analysis:
+        if len(chosen) == 2:
+            # langsung join analysis
+            df1, df2 = tables[chosen[0]], tables[chosen[1]]
+            key_suggestions = detect_join_keys(df1, df2)
+            key1, key2 = (key_suggestions[0] if key_suggestions else (df1.columns[0], df2.columns[0]))
             join_analysis = perform_join_analysis(df1, df2, key1, key2)
             
-            # Display join results
-            st.markdown("#### Join Analysis Results")
-            
-            col_1, col_2, col_3 = st.columns(3)
-            with col_1:
-                st.metric("Matched Records", join_analysis.get("matched_keys", 0))
-            with col_2:
-                st.metric(f"Only in {chosen[0]}", join_analysis.get("unmatched_in_table1", 0))
-            with col_3:
-                st.metric(f"Only in {chosen[1]}", join_analysis.get("unmatched_in_table2", 0))
-            
-            # Show mismatches
-            if join_analysis.get("unmatched_in_table1", 0) > 0:
-                with st.expander(f"Sample records only in {chosen[0]}"):
-                    st.json(join_analysis.get("sample_unmatched_table1", []))
-            
-            if join_analysis.get("unmatched_in_table2", 0) > 0:
-                with st.expander(f"Sample records only in {chosen[1]}"):
-                    st.json(join_analysis.get("sample_unmatched_table2", []))
-            
-            # Save join analysis
+            st.markdown("### 🔗 Join Analysis Results")
+            st.json(join_analysis)
             st.session_state.last_findings["join_analysis"] = join_analysis
-            
-            # Generate narrative for join
-            narrative = generate_narrative(
-                f"Analyze the join between {chosen[0]} and {chosen[1]} on keys {key1} and {key2}",
+            st.session_state.last_narrative = generate_narrative(
+                f"Join analysis between {chosen[0]} and {chosen[1]}",
                 join_analysis
             )
             st.markdown("#### AI Narrative")
-            st.write(narrative)
-            st.session_state.last_narrative = narrative
+            st.write(st.session_state.last_narrative)
+
+        else:
+            # single or multiple table analysis
+            all_findings = {}
+            for name in chosen:
+                df = tables[name]
+                ft = docs_map.get(name, "")
+                fnd = run_single_table_templates(df, name, file_type=ft)
+                all_findings[name] = fnd
+                st.markdown(f"#### {name}")
+                render_summary(fnd, name)
+            
+            st.session_state.last_findings = all_findings
+            st.session_state.last_narrative = generate_narrative(
+                "Summarize the findings for selected tables.",
+                all_findings
+            )
+            st.markdown("### 📝 AI Narrative")
+            st.write(st.session_state.last_narrative)
+
 
     # Run main analysis
     if run_analysis:
