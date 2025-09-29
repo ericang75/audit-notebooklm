@@ -751,96 +751,135 @@ def main_ui():
                 st.dataframe(df.head(20), use_container_width=True)
 
     # Analysis buttons
-    # Single Analyze button
-    run_analysis = st.button("🚀 Analyze", type="primary", use_container_width=True)
-
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
     
-    # Join Analysis UI (if 2 tables selected)
-    if run_analysis:
-        if len(chosen) == 2:
-            # langsung join analysis
-            df1, df2 = tables[chosen[0]], tables[chosen[1]]
-            key_suggestions = detect_join_keys(df1, df2)
-            key1, key2 = (key_suggestions[0] if key_suggestions else (df1.columns[0], df2.columns[0]))
-            join_analysis = perform_join_analysis(df1, df2, key1, key2)
-            
-            st.markdown("### 🔗 Join Analysis Results")
-            st.json(join_analysis)
-            st.session_state.last_findings["join_analysis"] = join_analysis
-            st.session_state.last_narrative = generate_narrative(
-                f"Join analysis between {chosen[0]} and {chosen[1]}",
-                join_analysis
-            )
-            st.markdown("#### AI Narrative")
-            st.write(st.session_state.last_narrative)
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
 
-        else:
-            # single or multiple table analysis
-            all_findings = {}
-            for name in chosen:
-                df = tables[name]
-                ft = docs_map.get(name, "")
-                fnd = run_single_table_templates(df, name, file_type=ft)
-                all_findings[name] = fnd
-                st.markdown(f"#### {name}")
-                render_summary(fnd, name)
-            
-            st.session_state.last_findings = all_findings
-            st.session_state.last_narrative = generate_narrative(
-                "Summarize the findings for selected tables.",
-                all_findings
-            )
-            st.markdown("### 📝 AI Narrative")
-            st.write(st.session_state.last_narrative)
+    if len(chosen) == 1:
+        # --- Single File Mode ---
+        name = chosen[0]
+        df = tables[name]
+        ft = docs_map.get(name, "")
 
-
-    # Run main analysis
-    if run_analysis:
-        all_findings = {}
-        pdf_text_to_narrate = {}
-        
-        st.markdown("### 📊 Analysis Results")
-        
-        for name in tables:
-            df = tables[name]
-            ft = docs_map.get(name, "")
+        if st.button("🔎 Run Analysis", use_container_width=True):
             fnd = run_single_table_templates(df, name, file_type=ft)
-            
-            st.markdown(f"#### {name}")
-            
-            if ft == "pdf_text":
-                # Show summary for PDF text
-                st.info("PDF Text Document - Use AI for analysis")
-                pdf_text_to_narrate[name] = fnd.get("_hidden_sample_text", [])
+            render_summary(fnd, name)
+
+            # 🔹 AI insight
+            if st.session_state.openai_client:
+                ai_text = generate_narrative(
+                    f"Analyze single table {name} for audit findings",
+                    fnd,
+                    context_samples={name: df.head(10).to_dict(orient="records")}
+                )
+                st.markdown("#### 🤖 AI Audit Findings")
+                st.write(ai_text)
+                st.session_state.last_narrative = ai_text
+
+            st.session_state.last_findings = {name: fnd}
+
+    elif len(chosen) == 2:
+        st.markdown("### 🔗 Join Analysis")
+        df1, df2 = tables[chosen[0]], tables[chosen[1]]
+        
+        # Auto-detect keys
+        potential_keys = detect_join_keys(df1, df2)
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if potential_keys:
+                auto_key1, auto_key2 = potential_keys[0] if potential_keys else (None, None)
             else:
-                # Show compact summary with expandable details
-                render_summary(fnd, name)
+                st.info("No automatic keys detected. Please select manually.")
+                auto_key1, auto_key2 = None, None
             
-            all_findings[name] = fnd
-        
-        # Store findings
-        st.session_state.last_findings = all_findings
-        
-        # Generate narratives
-        if pdf_text_to_narrate:
-            narrative = generate_narrative(
-                "Analyze the PDF text documents for key insights and anomalies.",
-                {"pdf_text_docs": list(pdf_text_to_narrate.keys())},
-                context_samples=pdf_text_to_narrate
+            key1 = st.selectbox(
+                f"Join key from {chosen[0]}",
+                df1.columns,
+                index=list(df1.columns).index(auto_key1) if auto_key1 and auto_key1 in df1.columns else 0
             )
-            st.markdown("### 📝 AI Narrative (PDF Text)")
-            st.write(narrative)
-            st.session_state.last_narrative = narrative
-            log_conversation(proj, "system", json.dumps({"action": "pdf_text_narrative", "docs": list(pdf_text_to_narrate.keys())}))
-        else:
-            narrative = generate_narrative(
-                "Summarize the audit findings and recommend next steps.",
-                all_findings
+        
+        with col_b:
+            key2 = st.selectbox(
+                f"Join key from {chosen[1]}",
+                df2.columns,
+                index=list(df2.columns).index(auto_key2) if auto_key2 and auto_key2 in df2.columns else 0
             )
-            st.markdown("### 📝 AI Narrative")
-            st.write(narrative)
-            st.session_state.last_narrative = narrative
-            log_conversation(proj, "system", json.dumps({"action": "structured_narrative", "docs": list(all_findings.keys())}))
+        
+        if st.button("🔍 Analyze Join", use_container_width=True):
+            dup1 = df1[df1.duplicated([key1], keep=False)]
+            dup2 = df2[df2.duplicated([key2], keep=False)]
+
+            join_analysis = perform_join_analysis(df1, df2, key1, key2)
+            join_analysis["duplicates_table1"] = dup1.to_dict(orient="records") if not dup1.empty else []
+            join_analysis["duplicates_table2"] = dup2.to_dict(orient="records") if not dup2.empty else []
+            
+            # Display join results
+            st.markdown("#### Join Analysis Results")
+            
+            col_1, col_2, col_3 = st.columns(3)
+            with col_1:
+                st.metric("Matched Records", join_analysis.get("matched_keys", 0))
+            with col_2:
+                st.metric(f"Only in {chosen[0]}", join_analysis.get("unmatched_in_table1", 0))
+            with col_3:
+                st.metric(f"Only in {chosen[1]}", join_analysis.get("unmatched_in_table2", 0))
+            
+            # Show mismatches
+            if join_analysis.get("unmatched_in_table1", 0) > 0:
+                with st.expander(f"Sample records only in {chosen[0]}"):
+                    st.json(join_analysis.get("sample_unmatched_table1", []))
+            
+            if join_analysis.get("unmatched_in_table2", 0) > 0:
+                with st.expander(f"Sample records only in {chosen[1]}"):
+                    st.json(join_analysis.get("sample_unmatched_table2", []))
+
+            if join_analysis["duplicates_table1"]:
+                with st.expander(f"🔁 Duplicates in {chosen[0]} on {key1}"):
+                    st.dataframe(dup1)
+
+            if join_analysis["duplicates_table2"]:
+                with st.expander(f"🔁 Duplicates in {chosen[1]} on {key2}"):
+                    st.dataframe(dup2)
+            
+            # Save join analysis
+            st.session_state.last_findings["join_analysis"] = join_analysis
+            
+            # 🔹 AI Narrative tambahan
+            ai_text = generate_narrative(
+                f"Analyze and provide audit insights for the join between {chosen[0]} and {chosen[1]} on keys {key1} and {key2}",
+                join_analysis,
+                context_samples={
+                    chosen[0]: df1.head(10).to_dict(orient="records"),
+                    chosen[1]: df2.head(10).to_dict(orient="records")
+                }
+            )
+            st.markdown("#### 🤖 AI Insights on Join")
+            st.write(ai_text)
+            st.session_state.last_narrative = ai_text
+
+    elif len(chosen) > 2:
+        st.markdown("### 🔍 Multi-File Analysis")
+        # 🔹 AI-driven relationship finding
+        if st.session_state.openai_client:
+            schema_parts = []
+            context_samples = {}
+            for name, df in tables.items():
+                schema_parts.append(f"{name}: {len(df)} rows, {len(df.columns)} cols")
+                context_samples[name] = df.head(5).to_dict(orient="records")
+            
+            ai_text = generate_narrative(
+                f"Analyze relationships and potential joins across {len(chosen)} tables",
+                {"schemas": schema_parts},
+                context_samples=context_samples
+            )
+            st.markdown("#### 🤖 AI Multi-Table Insights")
+            st.write(ai_text)
+            st.session_state.last_narrative = ai_text
+
+
 
     # Export section
     if st.session_state.last_findings:
