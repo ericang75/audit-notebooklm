@@ -315,31 +315,30 @@ def perform_join_analysis(df1: pd.DataFrame, df2: pd.DataFrame, key1: str, key2:
 # ---------------- OpenAI client ----------------
 @st.cache_resource
 def get_openai_client():
-    api_key = st.secrets["OPENAI_API_KEY"]
-    if not api_key:
-        try:
-            api_key = os.environ.get("OPENAI_API_KEY", None)
-        except Exception:
-            api_key = None
+    # Lebih aman pakai .get() agar tidak error kalau key belum ada
+    api_key = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    
     if not api_key:
         return None
+
     if OpenAI is None:
-        st.warning("openai package not installed; LLM features disabled.")
+        st.warning("⚠️ openai package not installed; LLM features disabled.")
         return None
+
     try:
         return OpenAI(api_key=api_key)
-    except Exception:
+    except Exception as e:
+        st.warning(f"⚠️ Failed to initialize OpenAI client: {e}")
         return None
 
-
-if st.session_state.openai_client is None:
+if "openai_client" not in st.session_state:
     st.session_state.openai_client = get_openai_client()
 
 if st.session_state.openai_client is None:
     st.warning("⚠️ OpenAI API Key not loaded. Please check your Streamlit Secrets.")
 else:
     st.success("✅ OpenAI client initialized.")
-    
+
 # ---------------- File readers ----------------
 def read_csv_bytes(b: bytes) -> pd.DataFrame:
     try:
