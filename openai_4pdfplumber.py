@@ -939,16 +939,7 @@ def main_ui():
             col = col_sug1 if i % 2 == 0 else col_sug2
             with col:
                 if st.button(f"📌 {suggestion[:40]}...", key=f"sug_{i}", use_container_width=True):
-                    key_ai = f"ai_input_{proj}"
-                    # Tambahkan ke session_state sebelum text_area render
-                    if key_ai not in st.session_state:
-                        st.session_state[key_ai] = suggestion
-                    else:
-                        existing = st.session_state[key_ai].strip()
-                        if existing:
-                            st.session_state[key_ai] = existing + "\n" + suggestion
-                        else:
-                            st.session_state[key_ai] = suggestion
+                    st.session_state[f"ai_input_{proj}"] = suggestion
                     st.rerun()
 
     # Text area terhubung langsung ke session_state
