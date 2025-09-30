@@ -939,18 +939,19 @@ def main_ui():
             col = col_sug1 if i % 2 == 0 else col_sug2
             with col:
                 if st.button(f"📌 {suggestion[:40]}...", key=f"sug_{i}", use_container_width=True):
-                    # Tambahkan ke text_area
-                    if f"ai_input_{proj}" not in st.session_state:
-                        st.session_state[f"ai_input_{proj}"] = suggestion
+                    key_ai = f"ai_input_{proj}"
+                    # Tambahkan ke session_state sebelum text_area render
+                    if key_ai not in st.session_state:
+                        st.session_state[key_ai] = suggestion
                     else:
-                        existing = st.session_state[f"ai_input_{proj}"].strip()
+                        existing = st.session_state[key_ai].strip()
                         if existing:
-                            st.session_state[f"ai_input_{proj}"] = existing + "\n" + suggestion
+                            st.session_state[key_ai] = existing + "\n" + suggestion
                         else:
-                            st.session_state[f"ai_input_{proj}"] = suggestion
+                            st.session_state[key_ai] = suggestion
                     st.rerun()
 
-    # Text area terhubung ke session_state
+    # Text area terhubung langsung ke session_state
     q = st.text_area(
         "Ask a custom question about the selected tables/documents",
         height=100,
@@ -958,6 +959,7 @@ def main_ui():
         key=f"ai_input_{proj}"
     )
 
+    # Button untuk kirim pertanyaan ke AI
     if st.button("🤖 Ask AI", use_container_width=True):
         if not q.strip():
             st.warning("Please enter a question.")
@@ -976,10 +978,10 @@ def main_ui():
                         context_samples[name] = df.head(10).to_dict(orient="records")
                     except Exception:
                         context_samples[name] = str(df.head(5))
-            
+
             prompt_meta = "\n".join(schema_parts)
             client = st.session_state.openai_client
-            
+
             if client is None:
                 st.info("OpenAI not configured. Showing context preview:")
                 st.code(prompt_meta)
