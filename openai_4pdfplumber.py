@@ -540,43 +540,63 @@ def run_single_table_templates(df: pd.DataFrame, table_name: str, file_type: str
 
     return findings
 
-# ---------------- Narrative (AI) ----------------
-def generate_narrative(question: str, findings: Dict[str, Any], context_samples: Optional[Dict[str, Any]] = None) -> str:
+def truncate_dict(d: dict, max_chars: int = 4000) -> str:
+    """
+    Convert dict to JSON string and truncate if too long
+    (to avoid hitting OpenAI context limit).
+    """
+    s = json.dumps(d, default=str, indent=2)
+    if len(s) > max_chars:
+        s = s[:max_chars] + "\n...[TRUNCATED]..."
+    return s
+
+def generate_narrative(question: str,
+                       findings: Dict[str, Any],
+                       context_samples: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Generate AI narrative combining rule-based findings + small data samples.
+    findings → full rule-based results (compact already).
+    context_samples → dict of {table_name: list of sample rows}.
+    """
     client = st.session_state.openai_client
     if client is None:
-        out = {"question": question, "findings_preview": findings}
-        if context_samples:
-            out["context_samples_preview"] = {k: (v if isinstance(v, list) else str(v)[:500]) for k, v in context_samples.items()}
-        return json.dumps(out, indent=2)[:1500]
+        return json.dumps(findings, indent=2)[:800]
 
-    prompt = f"Question: {question}\n\nFindings:\n{json.dumps(findings, default=str, indent=2)}\n\n"
+    # Compact findings
+    findings_str = truncate_dict(findings, max_chars=5000)
+
+    # Add samples if available
+    sample_str = ""
     if context_samples:
-        prompt += "Context samples:\n"
-        for name, sample in context_samples.items():
-            try:
-                if isinstance(sample, list):
-                    sample_text = "\n".join([ (json.dumps(x, ensure_ascii=False) if isinstance(x, dict) else str(x)) for x in sample[:5] ])
-                elif isinstance(sample, pd.DataFrame):
-                    sample_text = sample.head(5).to_csv(index=False)
-                else:
-                    sample_text = str(sample)[:1500]
-            except Exception:
-                sample_text = str(sample)[:1000]
-            prompt += f"--- {name} sample ---\n{sample_text}\n\n"
+        sample_str = truncate_dict(context_samples, max_chars=3000)
 
     try:
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are an audit analyst. Produce concise factual audit narratives and suggested next steps."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an experienced audit analyst. "
+                        "Your task is to explain the findings clearly, "
+                        "highlight risks, anomalies, and give recommendations. "
+                        "Use the provided rule-based findings as ground truth. "
+                        "Use data samples only as illustrative examples, not for statistics."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Question: {question}\n\n"
+                               f"Rule-based Findings:\n{findings_str}\n\n"
+                               f"Sample Records (for illustration only):\n{sample_str}"
+                }
             ],
-            temperature=0.0,
-            max_tokens=700
+            temperature=0.2,
+            max_tokens=800
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        return f"[Narrative generation failed: {e}]"
+        return f"[Narrative generation failed: {e}]\n\nFallback Findings:\n{findings_str}"
 
 # ---------------- UI helpers ----------------
 def sidebar_panel():
@@ -633,7 +653,30 @@ def render_summary(findings: Dict[str, Any], table_name: str):
         st.session_state.show_details[details_key] = not st.session_state.show_details.get(details_key, False)
     
     if st.session_state.show_details.get(details_key, False):
-        st.json(findings)
+        st.markdown("### 🔍 Detailed Findings")
+
+        # Missing values
+        if "missing_values" in findings:
+            st.markdown("#### ⚠️ Missing Values")
+            st.json(findings["missing_values"])
+
+        # Duplicates
+        if "duplicates" in findings:
+            st.markdown("#### 🔁 Duplicate Records")
+            for key, dup_info in findings["duplicates"].items():
+                st.write(f"Duplicates detected on **{key}**: {dup_info.get('count', 0)} rows")
+                st.dataframe(pd.DataFrame(dup_info.get("sample", [])))
+
+        # Numeric anomalies
+        if "numeric_anomalies" in findings:
+            st.markdown("#### 📉 Numeric Anomalies")
+            for col, issues in findings["numeric_anomalies"].items():
+                st.write(f"Column **{col}** anomalies:")
+                st.json(issues)
+
+        # Full JSON fallback
+        with st.expander("🗂 Full JSON Findings"):
+            st.json(findings)
 
 # ---------------- Main UI ----------------
 def main_ui():
@@ -830,11 +873,19 @@ def main_ui():
             # Show mismatches
             if join_analysis.get("unmatched_in_table1", 0) > 0:
                 with st.expander(f"Sample records only in {chosen[0]}"):
-                    st.json(join_analysis.get("sample_unmatched_table1", []))
-            
+                    sample = join_analysis.get("sample_unmatched_table1", [])
+                    if sample:
+                        st.dataframe(pd.DataFrame(sample))
+                    else:
+                        st.write("No sample available")
+
             if join_analysis.get("unmatched_in_table2", 0) > 0:
                 with st.expander(f"Sample records only in {chosen[1]}"):
-                    st.json(join_analysis.get("sample_unmatched_table2", []))
+                    sample = join_analysis.get("sample_unmatched_table2", [])
+                    if sample:
+                        st.dataframe(pd.DataFrame(sample))
+                    else:
+                        st.write("No sample available")
 
             if join_analysis["duplicates_table1"]:
                 with st.expander(f"🔁 Duplicates in {chosen[0]} on {key1}"):
