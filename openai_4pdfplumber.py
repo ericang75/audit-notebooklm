@@ -793,12 +793,7 @@ def main_ui():
                 st.markdown(f"**{name}** — {len(df)} rows × {len(df.columns)} cols")
                 st.dataframe(df.head(20), use_container_width=True)
 
-    # Analysis buttons
-    st.markdown("---")
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    st.markdown("---")
-    col1, col2, col3 = st.columns([1, 1, 1])
+
 
     if len(chosen) == 1:
         # --- Single File Mode ---
