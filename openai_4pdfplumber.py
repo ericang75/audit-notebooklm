@@ -919,6 +919,7 @@ def main_ui():
             )
 
     # Ask AI section
+    # Ask AI section
     st.markdown("---")
     st.subheader("💬 Ask AI")
     with st.expander("💡 Suggested Questions", expanded=False):
@@ -938,16 +939,25 @@ def main_ui():
             col = col_sug1 if i % 2 == 0 else col_sug2
             with col:
                 if st.button(f"📌 {suggestion[:40]}...", key=f"sug_{i}", use_container_width=True):
-                    st.session_state[f"ai_question_{proj}"] = suggestion
+                    # Tambahkan ke text_area
+                    if f"ai_input_{proj}" not in st.session_state:
+                        st.session_state[f"ai_input_{proj}"] = suggestion
+                    else:
+                        existing = st.session_state[f"ai_input_{proj}"].strip()
+                        if existing:
+                            st.session_state[f"ai_input_{proj}"] = existing + "\n" + suggestion
+                        else:
+                            st.session_state[f"ai_input_{proj}"] = suggestion
                     st.rerun()
 
+    # Text area terhubung ke session_state
     q = st.text_area(
         "Ask a custom question about the selected tables/documents",
         height=100,
         placeholder="e.g., What are the main risks in this data? Are there any patterns in the anomalies?",
         key=f"ai_input_{proj}"
     )
-    
+
     if st.button("🤖 Ask AI", use_container_width=True):
         if not q.strip():
             st.warning("Please enter a question.")
@@ -979,10 +989,15 @@ def main_ui():
                 log_conversation(proj, "user", q)
                 findings_stub = {"selected_docs": list(tables.keys()), "schema": schema_parts}
                 with st.spinner("Thinking..."):
-                    narrative = generate_narrative(f"User question: {q}", findings_stub, context_samples=context_samples)
+                    narrative = generate_narrative(
+                        f"User question: {q}",
+                        findings_stub,
+                        context_samples=context_samples
+                    )
                 st.markdown("### 🤖 AI Answer")
                 st.write(narrative)
                 log_conversation(proj, "assistant", narrative)
+
 
     # Conversation log
     st.markdown("---")
