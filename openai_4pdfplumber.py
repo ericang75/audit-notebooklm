@@ -966,7 +966,7 @@ def main_ui():
     # Ask AI section
     # Ask AI section
     st.markdown("---")
-    st.subheader("💬 Ask AI")
+    st.subheader("💬 Ask Kelly")
     with st.expander("💡 Suggested Questions", expanded=False):
         suggested_questions = [
             "What are the main data quality issues in these tables?",
