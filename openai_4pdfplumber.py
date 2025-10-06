@@ -794,7 +794,6 @@ def main_ui():
                 st.dataframe(df.head(20), use_container_width=True)
 
 
-
     if len(chosen) == 1:
         # --- Single File Mode ---
         name = chosen[0]
@@ -997,7 +996,7 @@ def main_ui():
     )
 
     # Button untuk kirim pertanyaan ke AI
-    if st.button("🤖 Ask AI", use_container_width=True):
+    if st.button("🤖 Ask Kelly", use_container_width=True):
         if not q.strip():
             st.warning("Please enter a question.")
         else:
